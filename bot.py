@@ -31,5 +31,5 @@ def search():
     if results:
         send_message("\n\n".join(results))
 
-if name == "__main__":
+if __name__ == "__main__":
     search()
