@@ -155,7 +155,7 @@ def main():
             sent_ids.add(tid)
             count += 1
 
-            if count >= 5:
+            if count >= 10:
                 break
 
     save_sent(sent_ids)
