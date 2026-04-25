@@ -26,8 +26,8 @@ def send_photo(photo_url, caption):
     })
 
 def get_tweets(tag):
-    url = f"https://nitter.net/search?f=tweets&q=%23{tag}"
-    r = requests.get(url)
+    url = f"https://nitter.net/search?q=%23{tag}&f=live"
+    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
     soup = BeautifulSoup(r.text, "html.parser")
 
     tweets = []
@@ -39,12 +39,11 @@ def get_tweets(tag):
         if text_tag:
             text = text_tag.text.strip()
         else:
-            text = "بدون نص"
+            continue
 
-        if img_tag and img_tag.get("src"):
+        img_url = None
+        if img_tag and img_tag.get("src") and "profile_images" not in img_tag["src"]:
             img_url = "https://nitter.net" + img_tag["src"]
-        else:
-            img_url = None
 
         tweets.append((text, img_url))
 
