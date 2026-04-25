@@ -1,39 +1,35 @@
 import requests
-from bs4 import BeautifulSoup
+import time
 
-BOT_TOKEN = "8761813650:AAFtvKLzkHzMBgelkLhcY-7sWHcTVVFYsGA"
+TOKEN = "8761813650:AAFtvKLzkHzMBgelkLhcY-7sWHcTVVFYsGA"
 CHAT_ID = "1849103"
 
 hashtags = [
-    "صدر_حديثًا",
-    "صدر_حديثا",
-    "جديد_الكتب"
+    "#صدر_حديثًا",
+    "#صدر_حديثا",
+    "#جديد_الكتب"
 ]
 
-for tag in hashtags:
-    url = f"https://nitter.net/search?q=%23{tag}&f=images"
+def send_message(text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": CHAT_ID,
+        "text": text
+    }
+    requests.post(url, data=data)
 
-    r = requests.get(url)
-    soup = BeautifulSoup(r.text, "html.parser")
+def search():
+    results = []
 
-    images = soup.find_all("img")
+    for tag in hashtags:
+        url = f"https://nitter.net/search?f=tweets&q={tag}"
+        r = requests.get(url)
+        
+        if r.status_code == 200:
+            results.append(f"نتائج {tag} جاهزة 👇\n{url}\n")
 
-    count = 0
-    for img in images:
-        src = img.get("src")
+    if results:
+        send_message("\n\n".join(results))
 
-        if src and "pic" in src:
-            img_url = "https://nitter.net" + src
-
-            requests.post(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto",
-                data={
-                    "chat_id": CHAT_ID,
-                    "photo": img_url,
-                    "caption": f"#{tag}"
-                }
-            )
-
-            count += 1
-            if count == 3:
-                break
+if name == "__main__":
+    search()
