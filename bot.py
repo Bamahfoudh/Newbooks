@@ -1,6 +1,13 @@
 import requests
+import json
+import os
 
+# =========================
+# 🔐 إعداداتك
+# =========================
 BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAABf79AEAAAAAsSJXhaMKhIF3c%2FfU%2BXYfgvXkBhg%3DR4POVIWJTq0DdeIL54huHEMtezwfFrDGXQXpFsgwlnJAyf5Pei"
+TELEGRAM_TOKEN = "8761813650:AAFtvKLzkHzMBgelkLhcY-7sWHcTVVFYsGA"
+CHAT_ID = "1849103"
 
 HEADERS = {
     "Authorization": f"Bearer {BEARER_TOKEN}"
@@ -12,11 +19,73 @@ HASHTAGS = [
     "#جديد_الكتب"
 ]
 
-def get_tweets(hashtag):
+# =========================
+# ❌ استبعاد قوي
+# =========================
+EXCLUDE = [
+    "رواية","روايات","قصة","قصص","novel","story","شعر","قصيدة",
+    "سياسة","سياسي","انتخابات","حكومة","حزب","رئيس",
+    "فيلم","مسلسل","ممثل","مغني","أغنية","فن",
+    "خصم","كود","كوبون","عرض","توصيل","شحن","اطلب","متجر",
+    "مسابقة","سحب","اربح","جائزة",
+    "وظيفة","وظائف","دورة","دورات","تدريب",
+    "يوتيوب","فيديو","مقطع","تيك توك","بودكاست",
+    "رأيي","وش رايكم","نقاش","سؤال",
+    "ثريد","سلسلة","يتبع",
+    "اقتباس","اقتباسات","حكمة",
+    "برمجة","كود","AI","تقنية"
+]
+
+# =========================
+# ✔️ إشارات كتاب
+# =========================
+BOOK_HINTS = [
+    "كتاب","إصدار","صدر","طبعة","تحقيق","شرح",
+    "دار","نشر","مكتبة","مجلد","جزء","سلسلة",
+    "المؤلف","تأليف","ترجمة","غلاف"
+]
+
+# =========================
+# 🧠 فلتر
+# =========================
+def is_valid(text):
+    t = text.lower()
+
+    for bad in EXCLUDE:
+        if bad in t:
+            return False
+
+    if len(t) < 40:
+        return False
+
+    if not any(h in t for h in BOOK_HINTS):
+        return False
+
+    return True
+
+# =========================
+# 📦 منع التكرار
+# =========================
+DB_FILE = "sent_ids.json"
+
+def load_sent():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
+
+def save_sent(ids):
+    with open(DB_FILE, "w") as f:
+        json.dump(list(ids), f)
+
+# =========================
+# 📡 جلب التغريدات
+# =========================
+def get_tweets(tag):
     url = "https://api.twitter.com/2/tweets/search/recent"
 
     params = {
-        "query": f"{hashtag} -is:retweet has:images",
+        "query": f"{tag} -is:retweet -is:reply has:images",
         "max_results": 10,
         "expansions": "attachments.media_keys",
         "media.fields": "url",
@@ -26,54 +95,67 @@ def get_tweets(hashtag):
     res = requests.get(url, headers=HEADERS, params=params)
 
     if res.status_code != 200:
-        print("خطأ:", res.text)
+        print(res.text)
         return []
 
     data = res.json()
-
     tweets = data.get("data", [])
     media = data.get("includes", {}).get("media", [])
 
-    media_dict = {}
-    for m in media:
-        if m.get("type") == "photo":
-            media_dict[m["media_key"]] = m.get("url")
+    media_dict = {
+        m["media_key"]: m["url"]
+        for m in media if m.get("type") == "photo"
+    }
 
     results = []
 
     for tweet in tweets:
-        text = tweet.get("text", "")
-        media_keys = tweet.get("attachments", {}).get("media_keys", [])
+        text = tweet["text"]
+        if not is_valid(text):
+            continue
 
-        image_url = None
-        for key in media_keys:
-            if key in media_dict:
-                image_url = media_dict[key]
+        keys = tweet.get("attachments", {}).get("media_keys", [])
+        for k in keys:
+            if k in media_dict:
+                results.append((tweet["id"], text, media_dict[k]))
                 break
-
-        if image_url:
-            results.append((text, image_url))
 
     return results
 
+# =========================
+# 📤 إرسال تيليجرام
+# =========================
+def send_photo(text, photo):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "photo": photo,
+        "caption": text[:1000]
+    })
 
+# =========================
+# 🚀 التشغيل
+# =========================
 def main():
-    for tag in HASHTAGS:
-        print(f"\n===== {tag} =====")
+    sent_ids = load_sent()
 
+    for tag in HASHTAGS:
         tweets = get_tweets(tag)
 
-        if not tweets:
-            print("لا يوجد نتائج")
-            continue
+        count = 0
+        for tid, text, img in tweets:
+            if tid in sent_ids:
+                continue
 
-        for text, img in tweets[:3]:
-            print("📌 النص:")
-            print(text)
-            print("🖼 الصورة:")
-            print(img)
-            print("-" * 40)
+            send_photo(text, img)
+            sent_ids.add(tid)
+            count += 1
 
+            if count >= 5:  # حد أقصى لكل هاشتاق
+                break
 
+    save_sent(sent_ids)
+
+# =========================
 if __name__ == "__main__":
     main()
