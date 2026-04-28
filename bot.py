@@ -3,18 +3,22 @@ import json
 import os
 from datetime import datetime, timedelta
 
-# ===== إعداداتك =====
+# =========================
+# 🔐 إعداداتك
+# =========================
 BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAABf79AEAAAAAsSJXhaMKhIF3c%2FfU%2BXYfgvXkBhg%3DR4POVIWJTq0DdeIL54huHEMtezwfFrDGXQXpFsgwlnJAyf5Pei"
 TELEGRAM_TOKEN = "8761813650:AAFtvKLzkHzMBgelkLhcY-7sWHcTVVFYsGA"
 CHAT_ID = "1849103"
 
 HEADERS = {"Authorization": f"Bearer {BEARER_TOKEN}"}
 
-HASHTAGS = ["#صدر_حديثًا","#صدر_حديثا","#جديد_الكتب"]
+HASHTAGS = ["#صدر_حديثًا", "#صدر_حديثا", "#جديد_الكتب"]
 
-# ===== استبعاد =====
+# =========================
+# ❌ استبعاد
+# =========================
 EXCLUDE = [
-    "رواية","روايات","قصة","قصص","novel","story","شعر","قصيدة","ديوان",
+    "رواية","روايات","قصة","قصص","novel","story","شعر","قصيدة","ديوان","روايتان",
     "سياسة","سياسي","انتخابات","حكومة","حزب","رئيس","وزير",
     "فيلم","مسلسل","ممثل","مغني","أغنية","فن","مشاهير",
     "خصم","كود","كوبون","عرض","توصيل","شحن","اطلب","متجر","الدفع",
@@ -27,14 +31,18 @@ EXCLUDE = [
     "برمجة","AI","تقنية","تطبيق"
 ]
 
-# ===== إشارات كتاب =====
+# =========================
+# ✔️ إشارات كتاب
+# =========================
 BOOK_HINTS = [
     "كتاب","إصدار","صدر","طبعة","تحقيق","شرح",
     "دار","نشر","مكتبة","مجلد","جزء","سلسلة",
     "المؤلف","تأليف","ترجمة","غلاف","ردمك","isbn"
 ]
 
-# ===== فلتر ذكي =====
+# =========================
+# 🧠 فلتر ذكي
+# =========================
 def is_valid(text):
     t = text.lower()
 
@@ -62,29 +70,44 @@ def is_valid(text):
 
     return score >= 3
 
-# ===== تخزين =====
+# =========================
+# 📦 تخزين
+# =========================
 DB_FILE = "data.json"
 
 def load_data():
     if os.path.exists(DB_FILE):
-        with open(DB_FILE,"r") as f:
+        with open(DB_FILE, "r") as f:
             return json.load(f)
     return {"ids": [], "day": ""}
 
 def save_data(data):
-    with open(DB_FILE,"w") as f:
-        json.dump(data,f)
+    with open(DB_FILE, "w") as f:
+        json.dump(data, f)
 
-# ===== منع تكرار يومي =====
+# =========================
+# 📅 منع تكرار يومي
+# =========================
 def already_sent_today(data):
-    today = (datetime.utcnow()+timedelta(hours=3)).strftime("%Y-%m-%d")
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     return data.get("day") == today
 
 def mark_today(data):
-    today = (datetime.utcnow()+timedelta(hours=3)).strftime("%Y-%m-%d")
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
     data["day"] = today
 
-# ===== جلب =====
+# =========================
+# 🕘 تشغيل فقط 9 صباحًا
+# =========================
+def should_run_now():
+    now = datetime.utcnow() + timedelta(hours=3)
+    target = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    diff = abs((now - target).total_seconds()) / 60
+    return diff <= 10
+
+# =========================
+# 📡 جلب التغريدات
+# =========================
 def get_tweets(tag):
     url = "https://api.twitter.com/2/tweets/search/recent"
 
@@ -114,6 +137,7 @@ def get_tweets(tag):
     }
 
     results = []
+
     for t in tweets:
         text = t["text"]
 
@@ -128,7 +152,9 @@ def get_tweets(tag):
 
     return results
 
-# ===== إرسال =====
+# =========================
+# 📤 إرسال تيليجرام
+# =========================
 def send_photo(text, img):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     requests.post(url, data={
@@ -137,8 +163,14 @@ def send_photo(text, img):
         "caption": text[:1000]
     })
 
-# ===== تشغيل =====
+# =========================
+# 🚀 التشغيل
+# =========================
 def main():
+
+    if not should_run_now():
+        return
+
     data = load_data()
 
     if already_sent_today(data):
