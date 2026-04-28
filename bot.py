@@ -1,6 +1,8 @@
 import requests
 import json
 import os
+import hashlib
+import subprocess
 from datetime import datetime, timedelta
 
 # =========================
@@ -14,8 +16,10 @@ HEADERS = {"Authorization": f"Bearer {BEARER_TOKEN}"}
 
 HASHTAGS = ["#صدر_حديثًا", "#صدر_حديثا", "#جديد_الكتب"]
 
+DB_FILE = "data.json"
+
 # =========================
-# ❌ استبعاد
+# ❌ استبعاد (كما طلبت)
 # =========================
 EXCLUDE = [
     "رواية","روايات","قصة","قصص","novel","story","شعر","قصيدة","ديوان","روايتان",
@@ -46,9 +50,11 @@ BOOK_HINTS = [
 def is_valid(text):
     t = text.lower()
 
+    # استبعاد
     if any(b in t for b in EXCLUDE):
         return False
 
+    # طول
     if len(t) < 50:
         return False
 
@@ -63,7 +69,7 @@ def is_valid(text):
         if e in t:
             score += 1
 
-    weak = ["رأي","تجربة","اقتباس","ملخص"]
+    weak = ["رأي","تجربة","ملخص"]
     for w in weak:
         if w in t:
             score -= 1
@@ -71,33 +77,33 @@ def is_valid(text):
     return score >= 3
 
 # =========================
-# 📦 تخزين
+# 📥 تحميل
 # =========================
-DB_FILE = "data.json"
-
 def load_data():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r") as f:
             return json.load(f)
-    return {"ids": [], "day": ""}
+    return {"images": [], "day": ""}
 
+# =========================
+# 💾 حفظ
+# =========================
 def save_data(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f)
 
 # =========================
-# 📅 منع تكرار يومي
+# 🔑 بصمة الصورة
 # =========================
-def already_sent_today(data):
-    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
-    return data.get("day") == today
-
-def mark_today(data):
-    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
-    data["day"] = today
+def hash_image(url):
+    try:
+        r = requests.get(url, timeout=10)
+        return hashlib.md5(r.content).hexdigest()
+    except:
+        return None
 
 # =========================
-# 🕘 تشغيل فقط 9 صباحًا
+# 🕘 وقت التشغيل
 # =========================
 def should_run_now():
     now = datetime.utcnow() + timedelta(hours=3)
@@ -106,15 +112,13 @@ def should_run_now():
     return diff <= 10
 
 # =========================
-# 📡 جلب التغريدات
+# 📡 تويتر
 # =========================
 def get_tweets(tag):
     url = "https://api.twitter.com/2/tweets/search/recent"
 
-    query = f"{tag} -is:retweet has:images"
-
     params = {
-        "query": query,
+        "query": f"{tag} -is:retweet -is:reply has:images",
         "max_results": 10,
         "expansions": "attachments.media_keys",
         "media.fields": "url",
@@ -147,13 +151,13 @@ def get_tweets(tag):
         keys = t.get("attachments", {}).get("media_keys", [])
         for k in keys:
             if k in media_map:
-                results.append((t["id"], text, media_map[k]))
+                results.append((text, media_map[k]))
                 break
 
     return results
 
 # =========================
-# 📤 إرسال تيليجرام
+# 📤 تيليجرام
 # =========================
 def send_photo(text, img):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
@@ -173,30 +177,44 @@ def main():
 
     data = load_data()
 
-    if already_sent_today(data):
-        print("أرسل اليوم")
+    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
+
+    if data.get("day") == today:
         return
 
-    sent_ids = set(data.get("ids", []))
+    seen = set(data.get("images", []))
 
-    for tag in HASHTAGS:
-        tweets = get_tweets(tag)
-        count = 0
+    tag = HASHTAGS[(datetime.utcnow().day) % len(HASHTAGS)]
+    tweets = get_tweets(tag)
 
-        for tid, text, img in tweets:
-            if tid in sent_ids:
-                continue
+    sent = 0
 
-            send_photo(text, img)
-            sent_ids.add(tid)
-            count += 1
+    for text, img in tweets:
 
-            if count >= 10:
-                break
+        h = hash_image(img)
 
-    data["ids"] = list(sent_ids)
-    mark_today(data)
+        if not h or h in seen:
+            continue
+
+        send_photo(text, img)
+
+        seen.add(h)
+        sent += 1
+
+        if sent >= 5:
+            break
+
+    data["images"] = list(seen)
+    data["day"] = today
+
     save_data(data)
+
+    # حفظ في GitHub
+    subprocess.run(["git", "config", "--global", "user.email", "bot@example.com"])
+    subprocess.run(["git", "config", "--global", "user.name", "bot"])
+    subprocess.run(["git", "add", "data.json"])
+    subprocess.run(["git", "commit", "-m", "update data"], check=False)
+    subprocess.run(["git", "push"])
 
 if __name__ == "__main__":
     main()
