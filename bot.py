@@ -117,8 +117,11 @@ def should_run_now():
 def get_tweets(tag):
     url = "https://api.twitter.com/2/tweets/search/recent"
 
+    # بحث بسيط بدون تعقيد (هذا هو التعديل المهم)
+    query = f"{tag} -is:retweet -is:reply has:images"
+
     params = {
-        "query": f"{tag} -is:retweet -is:reply has:images",
+        "query": query,
         "max_results": 10,
         "expansions": "attachments.media_keys",
         "media.fields": "url",
