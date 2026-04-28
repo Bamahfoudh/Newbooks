@@ -2,122 +2,96 @@ import requests
 import json
 import os
 import hashlib
-import subprocess
-from datetime import datetime, timedelta
 
 # =========================
-# 🔐 إعداداتك
+# 🔐 إعدادات
 # =========================
 BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAABf79AEAAAAAsSJXhaMKhIF3c%2FfU%2BXYfgvXkBhg%3DR4POVIWJTq0DdeIL54huHEMtezwfFrDGXQXpFsgwlnJAyf5Pei"
 TELEGRAM_TOKEN = "8761813650:AAFtvKLzkHzMBgelkLhcY-7sWHcTVVFYsGA"
 CHAT_ID = "1849103"
 
-HEADERS = {"Authorization": f"Bearer {BEARER_TOKEN}"}
+HEADERS = {
+    "Authorization": f"Bearer {BEARER_TOKEN}"
+}
 
-HASHTAGS = ["#صدر_حديثًا", "#صدر_حديثا", "#جديد_الكتب"]
-
-DB_FILE = "data.json"
+HASHTAGS = [
+    "#صدر_حديثًا",
+    "#صدر_حديثا",
+    "#جديد_الكتب"
+]
 
 # =========================
-# ❌ استبعاد (كما طلبت)
+# ❌ استثناءات قوية
 # =========================
 EXCLUDE = [
-    "رواية","روايات","قصة","قصص","novel","story","شعر","قصيدة","ديوان","روايتان",
-    "سياسة","سياسي","انتخابات","حكومة","حزب","رئيس","وزير",
-    "فيلم","مسلسل","ممثل","مغني","أغنية","فن","مشاهير",
-    "خصم","كود","كوبون","عرض","توصيل","شحن","اطلب","متجر","الدفع",
-    "مسابقة","سحب","اربح","جائزة","شارك",
-    "وظيفة","وظائف","دورة","دورات","تدريب","ورشة",
-    "يوتيوب","فيديو","مقطع","تيك توك","بودكاست","بث","مساحة",
-    "رأيي","وش رايكم","نقاش","سؤال","فضفضة",
-    "ثريد","سلسلة","يتبع","تابع",
-    "اقتباس","اقتباسات","حكمة","قال",
-    "برمجة","AI","تقنية","تطبيق"
+    "رواية","روايات","قصة","قصص","شعر","قصيدة","ديوان",
+    "سياسة","انتخابات","حكومة",
+    "فيلم","مسلسل","مغني","أغنية",
+    "خصم","كود","عرض","متجر",
+    "وظيفة","دورة","تدريب",
+    "يوتيوب","فيديو","تيك توك",
+    "رأيي","سؤال","نقاش",
+    "اقتباس","حكمة",
+    "برمجة","AI","تقنية"
 ]
 
 # =========================
 # ✔️ إشارات كتاب
 # =========================
 BOOK_HINTS = [
-    "كتاب","إصدار","صدر","طبعة","تحقيق","شرح",
-    "دار","نشر","مكتبة","مجلد","جزء","سلسلة",
-    "المؤلف","تأليف","ترجمة","غلاف","ردمك","isbn"
+    "كتاب","صدر","إصدار","طبعة",
+    "دار","نشر","مكتبة",
+    "تأليف","تحقيق","ترجمة"
 ]
 
 # =========================
-# 🧠 فلتر ذكي
+# 🧠 فلتر
 # =========================
 def is_valid(text):
     t = text.lower()
 
-    # استبعاد
+    if len(t) < 40:
+        return False
+
     if any(b in t for b in EXCLUDE):
         return False
 
-    # طول
-    if len(t) < 50:
+    if not any(h in t for h in BOOK_HINTS):
         return False
 
-    score = 0
-
-    for h in BOOK_HINTS:
-        if h in t:
-            score += 2
-
-    extra = ["pdf","نسخة","تحميل","مكتبة","غلاف","فهرس","طبعة جديدة"]
-    for e in extra:
-        if e in t:
-            score += 1
-
-    weak = ["رأي","تجربة","ملخص"]
-    for w in weak:
-        if w in t:
-            score -= 1
-
-    return score >= 3
+    return True
 
 # =========================
-# 📥 تحميل
-# =========================
-def load_data():
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    return {"images": [], "day": ""}
-
-# =========================
-# 💾 حفظ
-# =========================
-def save_data(data):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f)
-
-# =========================
-# 🔑 بصمة الصورة
+# 🧠 بصمة الصورة (منع التكرار الحقيقي)
 # =========================
 def hash_image(url):
     try:
-        r = requests.get(url, timeout=10)
-        return hashlib.md5(r.content).hexdigest()
+        img = requests.get(url).content
+        return hashlib.md5(img).hexdigest()
     except:
         return None
 
 # =========================
-# 🕘 وقت التشغيل
+# 💾 تخزين
 # =========================
-def should_run_now():
-    now = datetime.utcnow() + timedelta(hours=3)
-    target = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    diff = abs((now - target).total_seconds()) / 60
-    return diff <= 10
+FILE = "data.json"
+
+def load_data():
+    if os.path.exists(FILE):
+        with open(FILE, "r") as f:
+            return json.load(f)
+    return {"images": []}
+
+def save_data(data):
+    with open(FILE, "w") as f:
+        json.dump(data, f)
 
 # =========================
-# 📡 تويتر
+# 📡 جلب التغريدات
 # =========================
 def get_tweets(tag):
     url = "https://api.twitter.com/2/tweets/search/recent"
 
-    # بحث بسيط بدون تعقيد (هذا هو التعديل المهم)
     query = f"{tag} -is:retweet -is:reply has:images"
 
     params = {
@@ -154,13 +128,13 @@ def get_tweets(tag):
         keys = t.get("attachments", {}).get("media_keys", [])
         for k in keys:
             if k in media_map:
-                results.append((t["id"], text, media_map[k]))
+                results.append((text, media_map[k]))
                 break
 
     return results
 
 # =========================
-# 📤 تيليجرام
+# 📤 إرسال
 # =========================
 def send_photo(text, img):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
@@ -174,50 +148,33 @@ def send_photo(text, img):
 # 🚀 التشغيل
 # =========================
 def main():
-
-    if not should_run_now():
-        return
-
     data = load_data()
-
-    today = (datetime.utcnow() + timedelta(hours=3)).strftime("%Y-%m-%d")
-
-    if data.get("day") == today:
-        return
-
     seen = set(data.get("images", []))
-
-    tag = HASHTAGS[(datetime.utcnow().day) % len(HASHTAGS)]
-    tweets = get_tweets(tag)
 
     sent = 0
 
-    for text, img in tweets:
+    for tag in HASHTAGS:
+        tweets = get_tweets(tag)
 
-        h = hash_image(img)
+        for text, img in tweets:
+            h = hash_image(img)
 
-        if not h or h in seen:
-            continue
+            # 🔥 هنا الحل الحقيقي للتكرار
+            if not h or h in seen:
+                continue
 
-        send_photo(text, img)
+            send_photo(text, img)
+            seen.add(h)
+            sent += 1
 
-        seen.add(h)
-        sent += 1
+            if sent >= 5:
+                break
 
         if sent >= 5:
             break
 
     data["images"] = list(seen)
-    data["day"] = today
-
     save_data(data)
-
-    # حفظ في GitHub
-    subprocess.run(["git", "config", "--global", "user.email", "bot@example.com"])
-    subprocess.run(["git", "config", "--global", "user.name", "bot"])
-    subprocess.run(["git", "add", "data.json"])
-    subprocess.run(["git", "commit", "-m", "update data"], check=False)
-    subprocess.run(["git", "push"])
 
 if __name__ == "__main__":
     main()
