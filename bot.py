@@ -154,7 +154,7 @@ def get_tweets(tag):
         keys = t.get("attachments", {}).get("media_keys", [])
         for k in keys:
             if k in media_map:
-                results.append((text, media_map[k]))
+                results.append((t["id"], text, media_map[k]))
                 break
 
     return results
