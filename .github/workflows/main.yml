@@ -2,7 +2,7 @@ name: Run Bot
 
 on:
   schedule:
-    - cron: '06 * * * *'
+    - cron: '0 6 * * *'   # 9 صباحًا مكة
   workflow_dispatch:
 
 jobs:
@@ -10,12 +10,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - run: pip install -r requirements.txt
+      - name: Install requirements
+        run: pip install -r requirements.txt
 
-      - run: python bot.py
+      - name: Run bot
+        run: python bot.py
