@@ -14,59 +14,39 @@ HEADERS = {
     "Authorization": f"Bearer {BEARER_TOKEN}"
 }
 
+# =========================
+# 👤 الحسابات
+# =========================
+ACCOUNTS = [
+    "newsunnabooks","kotobnew","dar_atlas","Aljawzi","sfaar16","center_rakaez",
+    "khizama7","AlMabarrah","darlmalikiya","Taqrib_sa","dr_belhay21","ihsancenter",
+    "mktabtsuotuor","falsalalmutairi","drdaghashalajmi","dorarnet","malturki",
+    "drabdelhalimben","booksnew1","dar_rakaezkw","eqleede","muqarbah","soturcenter",
+    "ataat11","darlataif","cons_books","alla1402","ithraaSA","dar_tg","yest1350",
+    "HKS_1407","fayez_alsuraih","daralminhaj","thmarat"
+]
+
+# =========================
+# #️⃣ هاشتاقات
+# =========================
 HASHTAGS = [
+    "#جديد_إصدارات_الكتب",
+    "#جديد_الكتب",
+    "#كتب_جديدة",
+    "#إصدارات_الكتب",
+    "#صدر_حديثاً",
     "#صدر_حديثًا",
     "#صدر_حديثا",
-    "#جديد_الكتب"
+    "#يصدر_قريبًا",
+    "#يصدر_قريبا"
 ]
 
 # =========================
-# ❌ استثناءات قوية
-# =========================
-EXCLUDE = [
-    "رواية","روايات","قصة","قصص","شعر","قصيدة","ديوان",
-    "سياسة","انتخابات","حكومة",
-    "فيلم","مسلسل","مغني","أغنية",
-    "خصم","كود","عرض","متجر",
-    "وظيفة","دورة","تدريب",
-    "يوتيوب","فيديو","تيك توك",
-    "رأيي","سؤال","نقاش",
-    "اقتباس","حكمة",
-    "برمجة","AI","تقنية"
-]
-
-# =========================
-# ✔️ إشارات كتاب
-# =========================
-BOOK_HINTS = [
-    "كتاب","صدر","إصدار","طبعة",
-    "دار","نشر","مكتبة",
-    "تأليف","تحقيق","ترجمة"
-]
-
-# =========================
-# 🧠 فلتر
-# =========================
-def is_valid(text):
-    t = text.lower()
-
-    if len(t) < 40:
-        return False
-
-    if any(b in t for b in EXCLUDE):
-        return False
-
-    if not any(h in t for h in BOOK_HINTS):
-        return False
-
-    return True
-
-# =========================
-# 🧠 بصمة الصورة (منع التكرار الحقيقي)
+# 🔒 بصمة الصورة
 # =========================
 def hash_image(url):
     try:
-        img = requests.get(url).content
+        img = requests.get(url, timeout=10).content
         return hashlib.md5(img).hexdigest()
     except:
         return None
@@ -87,49 +67,64 @@ def save_data(data):
         json.dump(data, f)
 
 # =========================
-# 📡 جلب التغريدات
+# 📡 جلب (مع دعم الريتويت)
 # =========================
-def get_tweets(tag):
+def get_tweets():
     url = "https://api.twitter.com/2/tweets/search/recent"
-
-    query = f"{tag} -is:retweet -is:reply has:images"
-
-    params = {
-        "query": query,
-        "max_results": 10,
-        "expansions": "attachments.media_keys",
-        "media.fields": "url",
-        "tweet.fields": "text"
-    }
-
-    r = requests.get(url, headers=HEADERS, params=params)
-
-    if r.status_code != 200:
-        print(r.text)
-        return []
-
-    data = r.json()
-    tweets = data.get("data", [])
-    media = data.get("includes", {}).get("media", [])
-
-    media_map = {
-        m["media_key"]: m["url"]
-        for m in media if m.get("type") == "photo"
-    }
-
     results = []
 
-    for t in tweets:
-        text = t["text"]
+    accounts_query = " OR ".join([f"from:{a}" for a in ACCOUNTS])
 
-        if not is_valid(text):
+    for tag in HASHTAGS:
+        # 🔥 لا نستبعد الريتويت
+        query = f"({accounts_query}) {tag} -is:reply has:images"
+
+        params = {
+            "query": query,
+            "max_results": 10,
+            "expansions": "attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id",
+            "media.fields": "url",
+            "tweet.fields": "text,referenced_tweets"
+        }
+
+        r = requests.get(url, headers=HEADERS, params=params)
+
+        if r.status_code != 200:
+            print("خطأ:", r.text)
             continue
 
-        keys = t.get("attachments", {}).get("media_keys", [])
-        for k in keys:
-            if k in media_map:
-                results.append((text, media_map[k]))
-                break
+        data = r.json()
+        tweets = data.get("data", [])
+        includes = data.get("includes", {})
+        media = includes.get("media", [])
+        referenced = includes.get("tweets", [])
+
+        media_map = {
+            m["media_key"]: m["url"]
+            for m in media if m.get("type") == "photo"
+        }
+
+        # خريطة للتغريدات الأصلية
+        ref_map = {t["id"]: t for t in referenced}
+
+        for t in tweets:
+            text = t["text"]
+            keys = t.get("attachments", {}).get("media_keys", [])
+
+            # 🔥 إذا ما فيه صورة، نحاول من التغريدة الأصلية
+            if not keys and "referenced_tweets" in t:
+                for ref in t["referenced_tweets"]:
+                    if ref["type"] == "retweeted":
+                        original = ref_map.get(ref["id"])
+                        if original:
+                            text = original.get("text", text)
+                            keys = original.get("attachments", {}).get("media_keys", [])
+                        break
+
+            for k in keys:
+                if k in media_map:
+                    results.append((text, media_map[k]))
+                    break
 
     return results
 
@@ -151,24 +146,19 @@ def main():
     data = load_data()
     seen = set(data.get("images", []))
 
+    tweets = get_tweets()
+
     sent = 0
 
-    for tag in HASHTAGS:
-        tweets = get_tweets(tag)
+    for text, img in tweets:
+        h = hash_image(img)
 
-        for text, img in tweets:
-            h = hash_image(img)
+        if not h or h in seen:
+            continue
 
-            # 🔥 هنا الحل الحقيقي للتكرار
-            if not h or h in seen:
-                continue
-
-            send_photo(text, img)
-            seen.add(h)
-            sent += 1
-
-            if sent >= 5:
-                break
+        send_photo(text, img)
+        seen.add(h)
+        sent += 1
 
         if sent >= 5:
             break
@@ -176,5 +166,6 @@ def main():
     data["images"] = list(seen)
     save_data(data)
 
+# =========================
 if __name__ == "__main__":
     main()
